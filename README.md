@@ -50,7 +50,7 @@ This system's stability comes from intelligently splitting the workload between 
 
 2.  **The Vision Server (Rockchip RK3188):** Acts as the **"Eyes" and "Brain"**. This more powerful ARM Linux computer handles the computationally "heavy" tasks:
 
-      * Capturing the high-resolution USB camera feed.
+      * Capturing the USB camera feed.
       * Running the OpenCV HOG algorithm on every frame.
       * Drawing bounding boxes on detected objects.
       * Re-encoding and streaming the processed MJPEG feed.
@@ -104,7 +104,7 @@ This separation ensures that a spike in the Computer Vision processing load **wi
 
   * **Motor Drivers:** 2x **L298N** Dual H-Bridge Drivers (for vertical lift motors).
   * **Thrust Motor Driver:** 1x **L298N** (for main propulsion).
-  * **Aviation Lights:** Red, Green, and White LEDs driven by **BC547 Transistors**.
+  * **Aviation Lights:** Red, Green, and White LEDs driven by **TIP141 Transistors**.
   * **Camera:** Standard USB Webcam.
   * **Power:** 5V-12V power source (e.g., LiPo + BEC) for motors and servos.
 
