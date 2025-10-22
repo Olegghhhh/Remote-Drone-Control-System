@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drone Controller PRO</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Courier New', monospace;
+      background: linear-gradient(180deg, #1a1a1a, #2c2c2c);
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: linear-gradient(135deg, #2a2a2a, #3a3a3a);
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.1);
+      border: 1px solid #444;
+    }
+    h1 {
+      text-align: center;
+      color: #00ccff;
+      text-shadow: 0 0 10px #00ccff;
+      margin-bottom: 20px;
+      font-size: 2.2em;
+    }
+    #status {
+      text-align: center;
+      color: #00ff00;
+      background: #1c1c1c;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      font-size: 1.2em;
+      box-shadow: inset 0 0 5px #00ff00;
+    }
+    .control-section, .yaw-control, .camera-control, .traction-control {
+      margin: 15px 0;
+      padding: 15px;
+      background: #222;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+      border: 1px solid #555;
+    }
+    .control-section h3, .yaw-control h3, .camera-control h3, .traction-control h3 {
+      color: #ffcc00;
+      margin-bottom: 10px;
+      text-shadow: 0 0 5px #ffcc00;
+    }
+    .joystick-area {
+      width: 200px;
+      height: 200px;
+      margin: 20px auto;
+      position: relative;
+      background: radial-gradient(circle, #333, #1a1a1a);
+      border-radius: 50%;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px #00ccff;
+      border: 2px solid #444;
+    }
+    .joystick {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, #555, #999);
+      border-radius: 50%;
+      position: absolute;
+      top: 75px;
+      left: 75px;
+      box-shadow: 0 0 15px #00ccff, inset 0 0 10px #fff;
+      cursor: move;
+      touch-action: none;
+      transition: box-shadow 0.3s ease;
+    }
+    .joystick:active {
+      box-shadow: 0 0 25px #00ccff, inset 0 0 15px #fff;
+    }
+    .btn {
+      background: linear-gradient(135deg, #2ecc71, #27ae60);
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 1em;
+      border-radius: 5px;
+      cursor: pointer;
+      box-shadow: 0 0 10px #2ecc71;
+      transition: transform 0.2s, box-shadow 0.2s;
+      font-family: 'Courier New', monospace;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 15px #2ecc71;
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+      box-shadow: 0 0 10px #e74c3c;
+    }
+    .btn-danger:hover {
+      box-shadow: 0 0 15px #e74c3c;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #3498db, #2980b9);
+      box-shadow: 0 0 10px #3498db;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 15px #3498db;
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+      background: #1c1c1c;
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: inset 0 0 5px #444;
+    }
+    .slider-label {
+      width: 100px;
+      color: #00ccff;
+      font-size: 1em;
+      text-align: right;
+      margin-right: 10px;
+    }
+    .slider {
+      -webkit-appearance: none;
+      width: 150px;
+      height: 8px;
+      background: linear-gradient(to right, #444, #888);
+      border-radius: 5px;
+      outline: none;
+      box-shadow: inset 0 0 5px #000;
+    }
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      background: #00ccff;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 10px #00ccff;
+      transition: box-shadow 0.2s;
+    }
+    .slider::-webkit-slider-thumb:hover {
+      box-shadow: 0 0 15px #00ccff;
+    }
+    .slider-value {
+      width: 50px;
+      text-align: center;
+      color: #00ff00;
+      background: #1c1c1c;
+      padding: 5px;
+      border-radius: 3px;
+      margin-left: 10px;
+    }
+    .speed-slider {
+      width: 200px;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 350px;
+      width: 90%;
+      box-shadow: 0 0 20px #00ccff;
+      border: 1px solid #444;
+      color: #fff;
+    }
+    .close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 1.5em;
+      color: #e74c3c;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .close:hover {
+      color: #ff6666;
+    }
+    select {
+      width: 150px;
+      padding: 5px;
+      background: #1c1c1c;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+    }
+    select:focus {
+      outline: none;
+      box-shadow: 0 0 5px #00ccff;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 15px;
+      }
+      .joystick-area {
+        width: 150px;
+        height: 150px;
+      }
+      .joystick {
+        width: 40px;
+        height: 40px;
+        top: 55px;
+        left: 55px;
+      }
+      .slider {
+        width: 120px;
+      }
+      .btn {
+        padding: 8px 15px;
+        font-size: 0.9em;
+      }
+    }
+    .video-section {
+      margin: 15px 0;
+      padding: 15px;
+      background: #222;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+      border: 1px solid #555;
+      text-align: center;
+    }
+    .video-section img {
+      width: 100%;
+      max-width: 640px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px #00ccff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Drone Controller PRO</h1>
+    
+    <!-- Status display -->
+    <div id="status">Status: Control not active</div>
+    
+    <!-- Control buttons for starting/stopping control -->
+    <div class="control-section">
+      <button class="btn btn-primary" onclick="getControl()">START CONTROL</button>
+      <button class="btn btn-danger" onclick="releaseControl()">STOP CONTROL</button>
+    </div>
+    
+    <!-- Video feed from TV stick -->
+    <div class="video-section">
+      <h3>Camera</h3>
+      <img src="http://192.168.4.250:5000/video_feed">
+    </div>
+    
+    <!-- Aileron control section with joystick -->
+    <div class="control-section">
+      <h3>Aileron Control</h3>
+      <p></p>
+      <button class="btn" onclick="openFlapsModal()">SET FLAPS</button>
+      <div class="joystick-area" id="joystickArea">
+        <div class="joystick" id="joystick"></div>
+      </div>
+    </div>
+    
+    <!-- Yaw control slider -->
+    <div class="yaw-control">
+      <h3>Yaw Control</h3>
+      <div class="slider-container">
+        <span class="slider-label">YAW:</span>
+        <input type="range" min="-100" max="100" value="0" class="slider" id="yawSlider">
+        <span class="slider-value" id="yawValue">0</span>
+      </div>
+    </div>
+    
+    <!-- Camera control sliders for pan and tilt -->
+    <div class="camera-control">
+      <h3>Camera Control</h3>
+      <div class="slider-container" id="panSliderContainer">
+        <span class="slider-label">PAN:</span>
+        <input type="range" min="0" max="180" value="90" class="slider" id="panSlider">
+        <span class="slider-value" id="panValue">90</span>
+      </div>
+      <div class="slider-container" id="tiltSliderContainer">
+        <span class="slider-label">TILT:</span>
+        <input type="range" min="0" max="180" value="90" class="slider" id="tiltSlider">
+        <span class="slider-value" id="tiltValue">90</span>
+      </div>
+    </div>
+    
+    <!-- Motor and light control buttons -->
+    <div class="control-section">
+      <button class="btn" onclick="sendCommand('/start_motors')">START MOTORS</button>
+      <button class="btn btn-danger" onclick="sendCommand('/stop_motors')">STOP MOTORS</button>
+      <button class="btn" onclick="sendCommand('/reset')">DISCONNECT</button>
+      <button class="btn" onclick="sendCommand('/lights_on')">TURN ON LIGHTS</button>
+      <button class="btn btn-danger" onclick="sendCommand('/lights_off')">TURN OFF LIGHTS</button>
+    </div>
+    
+    <!-- Traction motor speed control -->
+    <div class="traction-control">
+      <h3>Traction Motor</h3>
+      <div class="slider-container">
+        <span class="slider-label">SPEED:</span>
+        <input type="range" min="-55" max="55" value="0" class="speed-slider" id="tractionSlider">
+        <span class="slider-value" id="speedValue"></span>
+      </div>
+      <button class="btn btn-danger" onclick="stopTraction()">STOP</button>
+    </div>
+    
+    <!-- Modal for setting flaps position -->
+    <div class="modal" id="flapsModal">
+      <div class="modal-content">
+        <span class="close" onclick="closeFlapsModal()">×</span>
+        <h3>Flaps Position</h3>
+        <div class="slider-container">
+          <span class="slider-label">FLAPS:</span>
+          <input type="range" min="0" max="90" value="45" class="slider" id="flapsSlider">
+          <span class="slider-value" id="flapsValue">45</span>
+        </div>
+        <button class="btn" onclick="resetFlaps()">DISABLE FLAPS</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // DOM element references
+    const joystick = document.getElementById('joystick');
+    const joystickArea = document.getElementById('joystickArea');
+    const panSlider = document.getElementById('panSlider');
+    const tiltSlider = document.getElementById('tiltSlider');
+    const panValue = document.getElementById('panValue');
+    const tiltValue = document.getElementById('tiltValue');
+    const statusDisplay = document.getElementById('status');
+    const tractionSlider = document.getElementById('tractionSlider');
+    const speedValue = document.getElementById('speedValue');
+    const yawSlider = document.getElementById('yawSlider');
+    const yawValue = document.getElementById('yawValue');
+    const flapsModal = document.getElementById('flapsModal');
+    const flapsSlider = document.getElementById('flapsSlider');
+    const flapsValue = document.getElementById('flapsValue');
+    const panSliderContainer = document.getElementById('panSliderContainer');
+    const tiltSliderContainer = document.getElementById('tiltSliderContainer');
+    
+    let hasControl = false; // Flag for control status
+    let isDragging = false; // Flag for joystick dragging
+    const flightCenter = { x: 100, y: 100 }; // Joystick center position
+    const flightMaxMove = 75; // Maximum joystick movement distance
+
+    // Add event listeners for joystick interaction
+    joystick.addEventListener('mousedown', startFlightDrag);
+    joystick.addEventListener('touchstart', startFlightDrag);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('touchmove', drag);
+    document.addEventListener('mouseup', stopDrag);
+    document.addEventListener('touchend', stopDrag);
+
+    // Add event listeners for sliders
+    panSlider.addEventListener('input', updateCameraPosition);
+    tiltSlider.addEventListener('input', updateCameraPosition);
+    yawSlider.addEventListener('input', updateYawPosition);
+    yawSlider.addEventListener('mouseup', resetYawSlider);
+    yawSlider.addEventListener('touchend', resetYawSlider);
+    flapsSlider.addEventListener('input', updateFlapsPosition);
+    tractionSlider.addEventListener('input', function() {
+      const speed = this.value;
+      speedValue.textContent = speed;
+      sendTractionCommand(speed);
+    });
+
+    /**
+     * @brief Update status display text
+     */
+    function updateStatus() {
+      statusDisplay.textContent = `Status: ${hasControl ? 'Control active' : 'Control not active'}`;
+    }
+
+    /**
+     * @brief Request control of the drone
+     */
+    function getControl() {
+      fetch('/get_control')
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data && data.status === 'success') {
+            hasControl = true;
+            updateStatus();
+          }
+          if (data) alert(data.message);
+        })
+        .catch(err => console.error('Error:', err));
+    }
+
+    /**
+     * @brief Release control of the drone
+     */
+    function releaseControl() {
+      fetch('/release_control')
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.status === 'success') {
+            hasControl = false;
+            updateStatus();
+            resetFlightJoystick();
+            resetCameraSliders();
+            resetYawSlider();
+            resetFlaps();
+            stopTraction();
+          }
+          alert(data.message);
+        })
+        .catch(err => console.error('Error:', err));
+    }
+
+    /**
+     * @brief Send command to server
+     * @param cmd Command URL
+     */
+    function sendCommand(cmd) {
+      if (!hasControl) {
+        alert("You do not have control of the drone!");
+        return;
+      }
+      fetch(cmd)
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          if (!response.ok) throw new Error('Server error');
+          return response.json();
+        })
+        .then(data => {
+          if (data.status !== 'success') {
+            console.error('Error:', data.message);
+          }
+        })
+        .catch(err => console.error('Error:', err));
+    }
+
+    /**
+     * @brief Send traction motor speed command
+     * @param speed Motor speed (-55 to 55)
+     */
+    function sendTractionCommand(speed) {
+      if (!hasControl) {
+        alert("You do not have control of the drone!");
+        tractionSlider.value = 0;
+        speedValue.textContent = '';
+        return;
+      }
+      fetch(`/traction_motor?speed=${speed}`)
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error:', err));
+    }
+    
+    /**
+     * @brief Stop traction motor
+     */
+    function stopTraction() {
+      tractionSlider.value = 0;
+      speedValue.textContent = '';
+      sendTractionCommand(0);
+    }
+
+    /**
+     * @brief Start joystick drag interaction
+     * @param e Mouse or touch event
+     */
+    function startFlightDrag(e) {
+      if (!hasControl) return;
+      e.preventDefault();
+      isDragging = true;
+      updateFlightPosition(e.clientX || e.touches[0].clientX, e.clientY || e.touches[0].clientY);
+    }
+
+    /**
+     * @brief Handle joystick drag movement
+     * @param e Mouse or touch event
+     */
+    function drag(e) {
+      if (!hasControl || !isDragging) return;
+      e.preventDefault();
+      updateFlightPosition(e.clientX || e.touches[0].clientX, e.clientY || e.touches[0].clientY);
+    }
+
+    /**
+     * @brief Stop joystick drag
+     */
+    function stopDrag() {
+      if (!hasControl) return;
+      if (isDragging) {
+        isDragging = false;
+        resetFlightJoystick();
+      }
+    }
+
+    /**
+     * @brief Update joystick position and send to server
+     * @param clientX X coordinate
+     * @param clientY Y coordinate
+     */
+    function updateFlightPosition(clientX, clientY) {
+      const rect = joystickArea.getBoundingClientRect();
+      let x = clientX - rect.left - flightCenter.x;
+      let y = clientY - rect.top - flightCenter.y;
+      
+      const distance = Math.min(Math.sqrt(x*x + y*y), flightMaxMove);
+      const angle = Math.atan2(y, x);
+      
+      x = distance * Math.cos(angle);
+      y = distance * Math.sin(angle);
+      
+      joystick.style.transform = `translate(${x}px, ${y}px)`;
+      
+      const normX = (x / flightMaxMove).toFixed(2);
+      const normY = (y / flightMaxMove).toFixed(2);
+      
+      fetch(`/joystick?x=${normX}&y=${normY}`)
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error:', err));
+    }
+
+    /**
+     * @brief Update camera pan and tilt positions
+     */
+    function updateCameraPosition() {
+      if (!hasControl) {
+        alert("You do not have control of the drone!");
+        panSlider.value = 90;
+        tiltSlider.value = 90;
+        panValue.textContent = '90';
+        tiltValue.textContent = '90';
+        return;
+      }
+      const pan = panSlider.value;
+      const tilt = tiltSlider.value;
+      panValue.textContent = pan;
+      tiltValue.textContent = tilt;
+      
+      fetch(`/camera_control?x=${pan}&y=${tilt}`)
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error (camera):', err));
+    }
+
+    /**
+     * @brief Reset joystick to center
+     */
+    function resetFlightJoystick() {
+      joystick.style.transform = 'translate(0, 0)';
+      fetch('/joystick?x=0&y=0')
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error:', err));
+    }
+
+    /**
+     * @brief Reset camera sliders to neutral
+     */
+    function resetCameraSliders() {
+      panSlider.value = 90;
+      tiltSlider.value = 90;
+      panValue.textContent = '90';
+      tiltValue.textContent = '90';
+      fetch('/camera_control?x=90&y=90')
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error:', err));
+    }
+
+    /**
+     * @brief Update yaw slider position
+     */
+    function updateYawPosition() {
+      if (!hasControl) {
+        alert("You do not have control of the drone!");
+        yawSlider.value = 0;
+        yawValue.textContent = '0';
+        return;
+      }
+      const value = yawSlider.value / 100;
+      yawValue.textContent = yawSlider.value;
+      
+      fetch(`/yaw_control?value=${value}`)
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error (yaw):', err));
+    }
+
+    /**
+     * @brief Reset yaw slider to neutral
+     */
+    function resetYawSlider() {
+      yawSlider.value = 0;
+      yawValue.textContent = '0';
+      fetch('/yaw_control?value=0')
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error (yaw):', err));
+    }
+
+    /**
+     * @brief Update flaps position
+     */
+    function updateFlapsPosition() {
+      if (!hasControl) {
+        alert("You do not have control of the drone!");
+        flapsSlider.value = 45;
+        flapsValue.textContent = '45';
+        return;
+      }
+      const value = flapsSlider.value;
+      flapsValue.textContent = value;
+      
+      fetch(`/flaps_control?value=${value}`)
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error (flaps):', err));
+    }
+
+    /**
+     * @brief Open flaps control modal
+     */
+    function openFlapsModal() {
+      if (!hasControl) {
+        alert("You do not have control of the drone!");
+        return;
+      }
+      flapsModal.style.display = 'flex';
+    }
+
+    /**
+     * @brief Close flaps control modal
+     */
+    function closeFlapsModal() {
+      flapsModal.style.display = 'none';
+    }
+
+    /**
+     * @brief Reset flaps to neutral position
+     */
+    function resetFlaps() {
+      closeFlapsModal();
+      flapsSlider.value = 45;
+      flapsValue.textContent = '45';
+      fetch('/reset_flaps')
+        .then(response => {
+          if (response.status === 429) {
+            alert('Request limit exceeded!');
+            return;
+          }
+          return response.json();
+        })
+        .catch(err => console.error('Error (reset flaps):', err));
+    }
+
+    // Update status display periodically
+    setInterval(updateStatus, 2000);
+    updateStatus();
+  </script>
+</body>
+</html>
