@@ -1,5 +1,5 @@
 # Remote-Drone-Control-System
-ESP32 drone controller manages servos, motors, and lights via a web interface. Python Flask app with OpenCV detects people in USB camera video and streams it in real-time. (This is a non-flying exhibition stand designed solely for demonstrating a control system using ESP32 and a web interface. It is an educational prototype, not a combat drone, created for a university exhibition project.)
+ESP32 drone controller manages servos, motors, and lights via a web interface. Python Flask app with OpenCV detects people in USB camera video and streams it in real-time. <strong> (This is a non-flying exhibition stand designed solely for demonstrating a control system using ESP32 and a web interface. It is an educational prototype, not a combat drone, created for a university exhibition project.) </strong>
 # ESP32 & Linux Web Control System for a VTOL UAV Stand
 
 <div style="text-align: center;">
