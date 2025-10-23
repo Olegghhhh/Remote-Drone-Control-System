@@ -2,6 +2,10 @@
 ESP32 drone controller manages servos, motors, and lights via a web interface. Python Flask app with OpenCV detects people in USB camera video and streams it in real-time.
 # ESP32 & Linux Web Control System for a VTOL UAV Stand
 
+<div style="text-align: center;">
+  <img src="docs/images/IMG_0821.PNG" alt="Exhibition Stand Hardware" style="max-width: 100%; height: auto;">
+</div>
+
 This repository documents a comprehensive remote control system for a Vertical Take-Off and Landing (VTOL) UAV stand. The system provides robust control over all actuators and aviation lights via a local Wi-Fi web interface, powered by an **ESP32**.
 
 It is augmented by a secondary **ARM Linux computer (Rockchip RK3188)** that performs real-time **Computer Vision** tasks (HOG pedestrian detection) and streams the processed FPV feed back to the main control UI.
