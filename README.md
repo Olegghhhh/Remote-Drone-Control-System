@@ -8,19 +8,12 @@ It is augmented by a secondary **ARM Linux computer (Rockchip RK3188)** that per
 
 This project was developed at the National University of Water and Environmental Engineering (Rivne, Ukraine).
 
-\<p align="center"\>
-\<b\>[ --- PLACEHOLDER FOR YOUR MAIN PROJECT PHOTO --- ]\</b\>
-<br>
-\<em\>(A high-quality photo of your fully assembled VTOL UAV stand, showing the ESP32, servos, and FPV camera gimbal)\</em\>
-\</p\>
-
 ## Live Demo
-
-\<p align="center"\>
-\<b\>[ --- PLACEHOLDER FOR YOUR DEMO VIDEO/GIF --- ]\</b\>
-<br>
-\<em\>(A short screen recording of the web interface in action. It should show the joystick moving, the servos responding, and the FPV feed with HOG detection boxes appearing.)\</em\>
-\</p\>
+<div style="text-align: center;">
+  <a href="https://www.youtube.com/watch?v=qL3FL8OUee4">
+    <img src="https://img.youtube.com/vi/qL3FL8OUee4/0.jpg" alt="ESP32 Exhibition Stand Demo" style="max-width: 100%; height: auto;">
+  </a>
+</div>
 
 ## About This Project: A Note on the Development
 
