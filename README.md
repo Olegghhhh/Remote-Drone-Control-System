@@ -113,21 +113,17 @@ This separation ensures that a spike in the Computer Vision processing load **wi
 
 This diagram shows the flow of information between the user, the ESP32, and the Linux server.
 
-\<p align="center"\>
-\<b\>[ --- PLACEHOLDER FOR YOUR "Fig. 2 Structural diagram" --- ]\</b\>
-<br>
-\<em\>(Insert your structural diagram image here)\</em\>
-\</p\>
+<div style="text-align: center;">
+  <img src="docs/images/di.jpg" alt="Exhibition Stand Component" style="max-width: 100%; height: auto;">
+</div>
 
 ### Web Interface
 
 The unified web interface provides all controls and the processed FPV feed in a single screen.
 
-\<p align="center"\>
-\<b\>[ --- PLACEHOLDER FOR YOUR "Fig. 1 User interface" --- ]\</b\>
-<br>
-\<em\>(Insert a screenshot of your web UI here)\</em\>
-\</p\>
+<div style="text-align: center;">
+  <img src="docs/images/image.png" alt="Exhibition Stand Component" style="max-width: 100%; height: auto;">
+</div>
 
 -----
 
