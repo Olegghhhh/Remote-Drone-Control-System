@@ -103,7 +103,7 @@ This separation ensures that a spike in the Computer Vision processing load **wi
   * **Thrust Motor Driver:** 1x **L298N** (for main propulsion).
   * **Aviation Lights:** Red, Green, and White LEDs driven by **TIP141 Transistors**.
   * **Camera:** Standard USB Webcam.
-  * **Power:** 5V-12V power source (e.g., LiPo + BEC) for motors and servos.
+  * **Power:** 5V power source (e.g., LiPo + BEC) for motors and servos.
 
 -----
 
