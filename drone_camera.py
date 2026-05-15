@@ -1,6 +1,8 @@
 # Import required libraries
 import cv2  # OpenCV for computer vision tasks
 import threading  # For running detection in a separate thread
+import time  # For sleep in generator loop
+import atexit  # For graceful camera release
 from flask import Flask, Response  # Flask for web server and streaming
 
 # Configuration constants
@@ -58,7 +60,8 @@ def generate():
         # Access the processed frame safely
         with lock:
             if output_frame is None:
-                continue  # Skip if no frame is available
+                time.sleep(0.01)  # Avoid busy-wait CPU spin
+                continue
             # Encode frame as JPEG
             ret, buffer = cv2.imencode('.jpg', output_frame)
             frame = buffer.tobytes()
@@ -73,6 +76,13 @@ def video_feed():
     Returns a Response object with the streaming generator.
     """
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def cleanup():
+    """Release camera resource on exit."""
+    cap.release()
+    print("Camera released.")
+
+atexit.register(cleanup)
 
 if __name__ == '__main__':
     # Start the people detection in a separate thread

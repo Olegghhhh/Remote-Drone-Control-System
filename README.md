@@ -191,7 +191,7 @@ This part assumes you have flashed your ARM device with a compatible Linux OS (e
 2.  **Install Dependencies:**
 
       * Connect your device to the internet (temporarily) to install software.
-      * Navigate to the `fpv_server` directory from the cloned repository.
+      * Navigate to the root of the cloned repository.
       * Install Python and the required libraries:
         ```bash
         sudo apt-get update
@@ -206,7 +206,7 @@ This part assumes you have flashed your ARM device with a compatible Linux OS (e
         ```bash
         sudo nano /etc/systemd/system/fpv.service
         ```
-      * Paste the following configuration. **Remember to change `/path/to/`** to the *actual* full path of your `fpv_server` directory.
+      * Paste the following configuration. **Remember to change `/path/to/`** to the *actual* full path of the cloned repository directory.
         ```ini
         [Unit]
         Description=FPV Video Server for Drone Controller
@@ -214,12 +214,12 @@ This part assumes you have flashed your ARM device with a compatible Linux OS (e
         Wants=network-online.target
 
         [Service]
-        ExecStart=/usr/bin/python3 /path/to/fpv_server/video_server.py
-        WorkingDirectory=/path/to/fpv_server
+        ExecStart=/usr/bin/python3 /path/to/drone_camera.py
+        WorkingDirectory=/path/to
         StandardOutput=inherit
         StandardError=inherit
         Restart=always
-        User=root (or your login user)
+        User=root
 
         [Install]
         WantedBy=multi-user.target
@@ -233,7 +233,7 @@ This part assumes you have flashed your ARM device with a compatible Linux OS (e
       * The FPV server will now start automatically every time the device boots up.
 
 -----
-Safety and Reliability Features
+## Safety and Reliability Features
 The system was engineered with multiple layers of safety to prevent hardware damage and unpredictable behavior. These features operate automatically at the microcontroller level.
 
 Exclusive Control: Only one user (IP address) can gain control at a time. This prevents conflicting commands if multiple users are connected to the web interface.
