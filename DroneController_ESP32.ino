@@ -3,88 +3,146 @@
 #include <DNSServer.h>
 #include <ESP32Servo.h>
 
-// WiFi credentials for the access point
+// ============================================================
+// Logging macros (0=OFF, 1=ERROR, 2=INFO, 3=DEBUG)
+// Set to 2 for production, 3 for development debugging
+// ============================================================
+#define LOG_LEVEL 2
+#define LOG_ERROR(fmt, ...) do { if (LOG_LEVEL >= 1) Serial.printf("[ERR] " fmt "\n", ##__VA_ARGS__); } while(0)
+#define LOG_INFO(fmt, ...)  do { if (LOG_LEVEL >= 2) Serial.printf("[INF] " fmt "\n", ##__VA_ARGS__); } while(0)
+#define LOG_DEBUG(fmt, ...) do { if (LOG_LEVEL >= 3) Serial.printf("[DBG] " fmt "\n", ##__VA_ARGS__); } while(0)
+
+// ============================================================
+// WiFi & Network Configuration
+// ============================================================
 const char* ssid = "DroneController";
 const char* password = "flyhigh123";
-
-// IP configuration for the access point
 IPAddress apIP(192, 168, 4, 1);
 IPAddress netMsk(255, 255, 255, 0);
-
-// TV stick MAC and fixed IP address
 const String tvStickMac = "00:e0:4d:02:2d:98";
 const IPAddress tvStickFixedIP(192, 168, 4, 250);
 String tvStickIP = "";
 
-// Web and DNS server instances
+// ============================================================
+// Server & Servo Instances
+// ============================================================
 WebServer server(80);
 DNSServer dnsServer;
-
-// Servo motor instances for ailerons and camera
 Servo servo1, servo2, servo3, servo4, servo5, servo6;
 
-// Servo positions and target positions (in degrees)
-int pos1 = 45, pos2 = 45, pos3 = 45, pos4 = 45; // Neutral position for ailerons
-int pos5 = 90, pos6 = 90; // Neutral position for camera
-int targetPos1 = 45, targetPos2 = 45, targetPos3 = 45, targetPos4 = 45; // Target positions for ailerons
-int targetPos5 = 90, targetPos6 = 90; // Target positions for camera
-int step = 1; // Step size for servo movement
-unsigned long prevMillis = 0; // Previous time for servo updates
-const int interval = 50; // Interval for servo updates (ms)
-float yawValue = 0; // Yaw control value (-1 to 1)
-bool flapsMode = false; // Flaps mode status
-int flapsValue = 45; // Flaps position (0-90 degrees)
-bool cameraAutoMode = false; // Camera auto mode (always false)
+// ============================================================
+// Pin Definitions (constants)
+// ============================================================
+const int motorPins[] = {13, 25};
+const int tractionMotorEN = 12;
+const int tractionMotorIN1 = 5;
+const int tractionMotorIN2 = 19;
+const int NAV_LIGHT_LEFT = 15;
+const int NAV_LIGHT_RIGHT = 4;
+const int NAV_LIGHT_REAR = 18;
+const int BEACON_LIGHT_TOP = 23;
+const int STROBE_LIGHT = 21;
 
-// Request tracking for rate limiting
-unsigned long requestCount = 0;
-unsigned long lastSecond = 0;
-int requestsPerSecond = 0;
+// ============================================================
+// Timing Constants
+// ============================================================
+const int interval = 50;
+const unsigned long motorTimeout = 30000;
+const unsigned long controlTimeout = 30000;
+const unsigned long maxControlTime = 300000;
 const int maxRequestsPerSecond = 50;
 
-// Flag for returning to neutral state
-bool returningToNeutral = false;
+// ============================================================
+// Grouped State: Servos
+// ============================================================
+struct ServoState {
+  int pos1 = 45, pos2 = 45, pos3 = 45, pos4 = 45;
+  int pos5 = 90, pos6 = 90;
+  int targetPos1 = 45, targetPos2 = 45, targetPos3 = 45, targetPos4 = 45;
+  int targetPos5 = 90, targetPos6 = 90;
+  int baseTargetPos3 = 45, baseTargetPos4 = 45; // Pre-yaw base targets (fix 4.4)
+  int step = 1;
+  unsigned long prevMillis = 0;
+  float yawValue = 0;
+  bool flapsMode = false;
+  int flapsValue = 45;
+  bool cameraAutoMode = false;
+  bool returningToNeutral = false;
+} sv;
+// Reference aliases for backward compatibility
+int &pos1 = sv.pos1, &pos2 = sv.pos2, &pos3 = sv.pos3, &pos4 = sv.pos4;
+int &pos5 = sv.pos5, &pos6 = sv.pos6;
+int &targetPos1 = sv.targetPos1, &targetPos2 = sv.targetPos2;
+int &targetPos3 = sv.targetPos3, &targetPos4 = sv.targetPos4;
+int &targetPos5 = sv.targetPos5, &targetPos6 = sv.targetPos6;
+int &baseTargetPos3 = sv.baseTargetPos3, &baseTargetPos4 = sv.baseTargetPos4;
+int &step = sv.step;
+unsigned long &prevMillis = sv.prevMillis;
+float &yawValue = sv.yawValue;
+bool &flapsMode = sv.flapsMode;
+int &flapsValue = sv.flapsValue;
+bool &cameraAutoMode = sv.cameraAutoMode;
+bool &returningToNeutral = sv.returningToNeutral;
 
-// Pins for wing motors
-const int motorPins[] = {13, 25};
+// ============================================================
+// Grouped State: Motors
+// ============================================================
+struct MotorState {
+  int tractionSpeed = 0;
+  unsigned long wingStartTime = 0;
+  unsigned long tractionStartTime = 0;
+  bool wingRunning = false;
+  bool tractionRunning = false;
+} mt;
+int &tractionSpeed = mt.tractionSpeed;
+unsigned long &wingMotorsStartTime = mt.wingStartTime;
+unsigned long &tractionMotorStartTime = mt.tractionStartTime;
+bool &wingMotorsRunning = mt.wingRunning;
+bool &tractionMotorRunning = mt.tractionRunning;
 
-// Pins for traction motor (L298N driver)
-const int tractionMotorEN = 12; // Enable pin for PWM
-const int tractionMotorIN1 = 5; // Direction pin 1
-const int tractionMotorIN2 = 19; // Direction pin 2
-int tractionSpeed = 0; // Current traction motor speed
+// ============================================================
+// Grouped State: Lights
+// ============================================================
+struct LightState {
+  unsigned long beaconPreviousMillis = 0;
+  unsigned long strobePreviousMillis = 0;
+  bool beaconState = false;
+  bool strobeState = false;
+  bool enabled = false;
+} lt;
+unsigned long &beaconPreviousMillis = lt.beaconPreviousMillis;
+unsigned long &strobePreviousMillis = lt.strobePreviousMillis;
+bool &beaconState = lt.beaconState;
+bool &strobeState = lt.strobeState;
+bool &lightsEnabled = lt.enabled;
 
-// Timers for motor timeout
-unsigned long wingMotorsStartTime = 0;
-unsigned long tractionMotorStartTime = 0;
-bool wingMotorsRunning = false;
-bool tractionMotorRunning = false;
-const unsigned long motorTimeout = 30000; // 30-second motor timeout
+// ============================================================
+// Grouped State: Access Control
+// ============================================================
+struct AccessState {
+  String activeUserIP = "";
+  String authenticatedIP = "";
+  unsigned long lastActivity = 0;
+  unsigned long controlStartTime = 0;
+  bool isAuthenticated = false;
+} ac;
+String &activeUserIP = ac.activeUserIP;
+String &authenticatedIP = ac.authenticatedIP;
+unsigned long &lastActivity = ac.lastActivity;
+unsigned long &controlStartTime = ac.controlStartTime;
+bool &isAuthenticated = ac.isAuthenticated;
 
-// Navigation and beacon light pins
-const int NAV_LIGHT_LEFT = 15; // Red (left side)
-const int NAV_LIGHT_RIGHT = 4; // Green (right side)
-const int NAV_LIGHT_REAR = 18; // White (rear)
-const int BEACON_LIGHT_TOP = 23; // White beacon
-const int STROBE_LIGHT = 21; // White strobe
-
-// Light timing and state
-unsigned long beaconPreviousMillis = 0;
-unsigned long strobePreviousMillis = 0;
-bool beaconState = false;
-bool strobeState = false;
-bool lightsEnabled = false;
-
-// User access control
-String activeUserIP = ""; // IP of user with control
-String authenticatedIP = ""; // IP of authenticated user
-unsigned long lastActivity = 0; // Last activity timestamp
-unsigned long controlStartTime = 0; // Control session start time
-const unsigned long controlTimeout = 30000; // 30-second inactivity timeout
-const unsigned long maxControlTime = 300000; // 5-minute max control time
-
-// Authentication flag for captive portal
-bool isAuthenticated = false;
+// ============================================================
+// Grouped State: Request Tracking
+// ============================================================
+struct RequestTracker {
+  unsigned long count = 0;
+  unsigned long lastSecond = 0;
+  int perSecond = 0;
+} rq;
+unsigned long &requestCount = rq.count;
+unsigned long &lastSecond = rq.lastSecond;
+int &requestsPerSecond = rq.perSecond;
 
 /**
  * @brief Initialize hardware and network settings
@@ -139,7 +197,7 @@ void setup() {
 
   // Set TV stick IP address
   tvStickIP = tvStickFixedIP.toString();
-  Serial.println("Fixed IP for TV stick: " + tvStickIP);
+  LOG_INFO("Fixed IP for TV stick: %s", tvStickIP.c_str());
 
   // Set up HTTP server routes
   setupServer();
@@ -153,11 +211,10 @@ void setup() {
   servo5.write(90);
   servo6.write(90);
   delay(1000); // Wait for servos to reach positions
-  Serial.println("Ailerons (servo1-4) set to 45 degrees, camera (servo5-6) set to 90 degrees");
+  LOG_INFO("Ailerons set to 45 deg, camera set to 90 deg");
   
   // Log system readiness
-  Serial.println("System ready");
-  Serial.println("IP address: " + WiFi.softAPIP().toString());
+  LOG_INFO("System ready, IP: %s", WiFi.softAPIP().toString().c_str());
 }
 
 /**
@@ -191,7 +248,7 @@ void setTractionMotor(int speed) {
   }
   // Apply PWM to motor
   analogWrite(tractionMotorEN, pwmValue);
-  Serial.println("Traction motor: speed = " + String(speed) + ", PWM = " + String(pwmValue));
+  LOG_DEBUG("Traction motor: speed=%d, PWM=%d", speed, pwmValue);
 }
 
 /**
@@ -242,7 +299,7 @@ void updateLights() {
 void toggleLights(bool enable) {
   lightsEnabled = enable;
   updateLights();
-  Serial.println("Navigation lights: " + String(enable ? "enabled" : "disabled"));
+  LOG_INFO("Navigation lights: %s", enable ? "enabled" : "disabled");
 }
 
 /**
@@ -253,14 +310,14 @@ bool checkRequestLimit() {
   // Track requests per second
   unsigned long currentTime = millis();
   if (currentTime / 1000 != lastSecond) {
-    Serial.println("Request rate for previous second: " + String(requestsPerSecond) + " requests/s");
+    LOG_DEBUG("Request rate: %d/s", requestsPerSecond);
     requestsPerSecond = 0;
     lastSecond = currentTime / 1000;
   }
 
   // Check if request limit is exceeded
   if (requestsPerSecond >= maxRequestsPerSecond) {
-    Serial.println("Request limit exceeded: " + String(requestsPerSecond));
+    LOG_ERROR("Request limit exceeded: %d", requestsPerSecond);
     server.send(429, "text/plain", "Too Many Requests");
     return false;
   }
@@ -268,8 +325,7 @@ bool checkRequestLimit() {
   // Increment request counters
   requestsPerSecond++;
   requestCount++;
-  Serial258
-  Serial.println("Received request. Total: " + String(requestCount) + ", per second: " + String(requestsPerSecond));
+  LOG_DEBUG("Request #%lu, %d/s", requestCount, requestsPerSecond);
   return true;
 }
 
@@ -291,7 +347,7 @@ void setupServer() {
       handleRoot();
     } else if (server.uri() != "/login" && server.uri() != "/start") {
       server.send(200, "text/html", "<script>window.location.href='http://192.168.4.1/login';</script>");
-      Serial.println("Redirecting to /login for client " + clientIP);
+      LOG_DEBUG("Redirecting to /login for client %s", clientIP.c_str());
     } else {
       handleRoot();
     }
@@ -310,7 +366,7 @@ void setupServer() {
     isAuthenticated = true;
     authenticatedIP = clientIP;
     server.send(200, "text/html", "<script>window.location.href='http://192.168.4.1/';</script>");
-    Serial.println("User " + clientIP + " clicked 'Start'");
+    LOG_INFO("User %s clicked Start", clientIP.c_str());
   });
 
   // Serve main control page
@@ -337,7 +393,7 @@ void setupServer() {
     if (!checkAccess()) return;
     resetSystem();
     server.send(200, "application/json", "{\"status\":\"success\"}");
-    Serial.println("Request /reset, total requests: " + String(requestCount));
+    LOG_INFO("System reset, total: %lu", requestCount);
   });
 
   // Start wing motors
@@ -348,7 +404,7 @@ void setupServer() {
     wingMotorsRunning = true;
     wingMotorsStartTime = millis();
     server.send(200, "application/json", "{\"status\":\"success\"}");
-    Serial.println("Request /start_motors, total requests: " + String(requestCount));
+    LOG_INFO("Wing motors started, total: %lu", requestCount);
   });
 
   // Stop wing motors
@@ -358,7 +414,7 @@ void setupServer() {
     for (int pin : motorPins) digitalWrite(pin, LOW);
     wingMotorsRunning = false;
     server.send(200, "application/json", "{\"status\":\"success\"}");
-    Serial.println("Request /stop_motors, total requests: " + String(requestCount));
+    LOG_INFO("Wing motors stopped, total: %lu", requestCount);
   });
 
   // Control traction motor speed
@@ -369,15 +425,15 @@ void setupServer() {
       int speed = server.arg("speed").toInt();
       if (speed < -55 || speed > 55) {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid speed\"}");
-        Serial.println("Error: invalid speed " + String(speed));
+        LOG_ERROR("Invalid traction speed: %d", speed);
         return;
       }
       setTractionMotor(speed);
       server.send(200, "application/json", "{\"status\":\"success\"}");
-      Serial.println("Request /traction_motor?speed=" + String(speed) + ", total requests: " + String(requestCount));
+      LOG_DEBUG("Traction speed=%d, total: %lu", speed, requestCount);
     } else {
       server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Speed parameter missing\"}");
-      Serial.println("Error: speed parameter missing");
+      LOG_ERROR("Speed parameter missing");
     }
   });
 
@@ -391,7 +447,7 @@ void setupServer() {
       float y = server.arg("y").toFloat();
       if (abs(x) > 1.0 || abs(y) > 1.0) {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid x or y values\"}");
-        Serial.println("Error: invalid x=" + String(x) + ", y=" + String(y));
+        LOG_ERROR("Invalid joystick: x=%.2f, y=%.2f", x, y);
         return;
       }
       
@@ -408,23 +464,27 @@ void setupServer() {
         int rearLeft = vertical - (x * 45);
         int rearRight = vertical + (x * 45);
         
-        targetPos3 = constrain(90 - (rearLeft + (yawValue * 45)), 0, 90);
-        targetPos4 = constrain(rearRight - (yawValue * 45), 0, 90);
+        // Store base targets before yaw (fix 4.4)
+        baseTargetPos3 = constrain(90 - rearLeft, 0, 90);
+        baseTargetPos4 = constrain(rearRight, 0, 90);
       } else {
         if (!flapsMode) {
           targetPos1 = 45;
           targetPos2 = 45;
         }
-        targetPos3 = constrain(90 - (45 + (yawValue * 45)), 0, 90);
-        targetPos4 = constrain(45 - (yawValue * 45), 0, 90);
+        // Store neutral base targets (fix 4.4)
+        baseTargetPos3 = 45;
+        baseTargetPos4 = 45;
       }
+      // Apply yaw on top of base targets (fix 4.4)
+      targetPos3 = constrain(baseTargetPos3 - (int)(yawValue * 45), 0, 90);
+      targetPos4 = constrain(baseTargetPos4 - (int)(yawValue * 45), 0, 90);
       
-      Serial.println("Flight Joystick: x=" + String(x) + ", y=" + String(y) + ", yaw=" + String(yawValue) + ", flapsMode=" + String(flapsMode) + ", targetPos=" + String(targetPos1) + "," + String(targetPos2) + "," + String(targetPos3) + "," + String(targetPos4));
+      LOG_DEBUG("Joystick: x=%.2f y=%.2f yaw=%.2f tgt=%d,%d,%d,%d", x, y, yawValue, targetPos1, targetPos2, targetPos3, targetPos4);
       server.send(200, "application/json", "{\"status\":\"success\"}");
-      Serial.println("Request /joystick, total requests: " + String(requestCount));
     } else {
       server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing x or y parameters\"}");
-      Serial.println("Error: missing x or y parameters");
+      LOG_ERROR("Missing x or y parameters");
     }
   });
 
@@ -436,21 +496,21 @@ void setupServer() {
       float value = server.arg("value").toFloat();
       if (abs(value) > 1.0) {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid yaw value\"}");
-        Serial.println("Error (yaw): invalid value=" + String(value));
+        LOG_ERROR("Invalid yaw value: %.2f", value);
         return;
       }
       
       yawValue = value;
       
-      targetPos3 = constrain(90 - (targetPos3 + (yawValue * 45)), 0, 90);
-      targetPos4 = constrain(targetPos4 - (yawValue * 45), 0, 90);
+      // Apply yaw to stored base targets (fix 4.4 — non-cumulative)
+      targetPos3 = constrain(baseTargetPos3 - (int)(yawValue * 45), 0, 90);
+      targetPos4 = constrain(baseTargetPos4 - (int)(yawValue * 45), 0, 90);
       
-      Serial.println("Yaw Control: value=" + String(yawValue) + ", targetPos3=" + String(targetPos3) + ", targetPos4=" + String(targetPos4));
+      LOG_DEBUG("Yaw: val=%.2f tgt3=%d tgt4=%d", yawValue, targetPos3, targetPos4);
       server.send(200, "application/json", "{\"status\":\"success\"}");
-      Serial.println("Request /yaw_control, total requests: " + String(requestCount));
     } else {
       server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing value parameter\"}");
-      Serial.println("Error (yaw): missing value parameter");
+      LOG_ERROR("Missing yaw value parameter");
     }
   });
 
@@ -462,7 +522,7 @@ void setupServer() {
       int value = server.arg("value").toInt();
       if (value < 0 || value > 90) {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid flaps value\"}");
-        Serial.println("Error (flaps): invalid value=" + String(value));
+        LOG_ERROR("Invalid flaps value: %d", value);
         return;
       }
       
@@ -471,12 +531,11 @@ void setupServer() {
       targetPos1 = constrain(value, 0, 90);
       targetPos2 = constrain(90 - value, 0, 90);
       
-      Serial.println("Flaps Control: value=" + String(flapsValue) + ", targetPos1=" + String(targetPos1) + ", targetPos2=" + String(targetPos2));
+      LOG_DEBUG("Flaps: val=%d tgt1=%d tgt2=%d", flapsValue, targetPos1, targetPos2);
       server.send(200, "application/json", "{\"status\":\"success\"}");
-      Serial.println("Request /flaps_control, total requests: " + String(requestCount));
     } else {
       server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing value parameter\"}");
-      Serial.println("Error (flaps): missing value parameter");
+      LOG_ERROR("Missing flaps value parameter");
     }
   });
 
@@ -488,9 +547,8 @@ void setupServer() {
     targetPos1 = 45;
     targetPos2 = 45;
     
-    Serial.println("Flaps Reset: flapsMode=OFF, targetPos1=" + String(targetPos1) + ", targetPos2=" + String(targetPos2));
+    LOG_DEBUG("Flaps reset, tgt1=%d tgt2=%d", targetPos1, targetPos2);
     server.send(200, "application/json", "{\"status\":\"success\"}");
-    Serial.println("Request /reset_flaps, total requests: " + String(requestCount));
   });
 
   // Handle camera control input
@@ -503,19 +561,18 @@ void setupServer() {
       int tilt = server.arg("y").toInt();
       if (pan < 0 || pan > 180 || tilt < 0 || tilt > 180) {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid pan or tilt values\"}");
-        Serial.println("Error (camera): invalid pan=" + String(pan) + ", tilt=" + String(tilt));
+        LOG_ERROR("Invalid camera: pan=%d, tilt=%d", pan, tilt);
         return;
       }
       
       targetPos5 = constrain(pan, 0, 180);
       targetPos6 = constrain(tilt, 0, 180);
       
-      Serial.println("Camera Control: mode=Manual, pan=" + String(pan) + ", tilt=" + String(tilt) + ", targetPos5=" + String(targetPos5) + ", targetPos6=" + String(targetPos6));
+      LOG_DEBUG("Camera: pan=%d tilt=%d", pan, tilt);
       server.send(200, "application/json", "{\"status\":\"success\"}");
-      Serial.println("Request /camera_control, total requests: " + String(requestCount));
     } else {
       server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing pan or tilt parameters\"}");
-      Serial.println("Error (camera): missing pan or tilt parameters");
+      LOG_ERROR("Missing camera pan/tilt parameters");
     }
   });
 
@@ -525,7 +582,7 @@ void setupServer() {
     if (!checkAccess()) return;
     toggleLights(true);
     server.send(200, "application/json", "{\"status\":\"success\"}");
-    Serial.println("Request /lights_on, total requests: " + String(requestCount));
+    LOG_INFO("Lights on, total: %lu", requestCount);
   });
 
   // Turn off navigation lights
@@ -534,12 +591,12 @@ void setupServer() {
     if (!checkAccess()) return;
     toggleLights(false);
     server.send(200, "application/json", "{\"status\":\"success\"}");
-    Serial.println("Request /lights_off, total requests: " + String(requestCount));
+    LOG_INFO("Lights off, total: %lu", requestCount);
   });
 
   // Start the HTTP server
   server.begin();
-  Serial.println("HTTP server started");
+  LOG_INFO("HTTP server started");
 }
 
 /**
@@ -556,29 +613,26 @@ void loop() {
   if (wingMotorsRunning && currentMillis - wingMotorsStartTime >= motorTimeout) {
     for (int pin : motorPins) digitalWrite(pin, LOW);
     wingMotorsRunning = false;
-    Serial.println("Wing motors automatically stopped after 30 seconds");
+    LOG_INFO("Wing motors auto-stopped after %lu ms", motorTimeout);
   }
 
   // Check traction motor timeout
   if (tractionMotorRunning && currentMillis - tractionMotorStartTime >= motorTimeout) {
     setTractionMotor(0);
     tractionMotorRunning = false;
-    Serial.println("Traction motor automatically stopped after 30 seconds");
-    if (activeUserIP != "") {
-      server.send(200, "text/html", "<script>document.getElementById('tractionSlider').value = 0; document.getElementById('speedValue').textContent = '';</script>");
-    }
+    LOG_INFO("Traction motor auto-stopped after %lu ms", motorTimeout);
   }
 
   // Check for control inactivity timeout
   if (activeUserIP != "" && activeUserIP != tvStickIP && currentMillis - lastActivity > controlTimeout) {
     returnToNeutral();
-    Serial.println("Control timeout, returning to neutral");
+    LOG_INFO("Control timeout, returning to neutral");
   }
 
   // Check for maximum control time
   if (activeUserIP != "" && activeUserIP != tvStickIP && currentMillis - controlStartTime > maxControlTime) {
     returnToNeutral();
-    Serial.println("Maximum control time exceeded, returning to neutral");
+    LOG_INFO("Max control time exceeded, returning to neutral");
   }
 
   // Update servos and lights
@@ -593,7 +647,7 @@ void loop() {
     int stationCount = WiFi.softAPgetStationNum();
     if (stationCount == 0 && clientWasConnected) {
       returnToNeutral();
-      Serial.println("Client lost, returning to neutral");
+      LOG_INFO("Client lost, returning to neutral");
     }
     clientWasConnected = (stationCount > 0);
   }
@@ -611,6 +665,8 @@ void returnToNeutral() {
   targetPos4 = 45;
   targetPos5 = 90;
   targetPos6 = 90;
+  baseTargetPos3 = 45;
+  baseTargetPos4 = 45;
   yawValue = 0;
   flapsMode = false;
   flapsValue = 45;
@@ -626,7 +682,7 @@ void returnToNeutral() {
   servo5.detach();
   servo6.detach();
   
-  Serial.println("Servos detached — noise should stop");
+  LOG_INFO("Servos detached");
   
   // Reset system state
   activeUserIP = "";
@@ -639,7 +695,7 @@ void returnToNeutral() {
   setTractionMotor(0);
   tractionMotorRunning = false;
   toggleLights(false);
-  Serial.println("Returned to neutral position, navigation lights disabled");
+  LOG_INFO("Returned to neutral, lights disabled");
 }
 
 /**
@@ -652,7 +708,7 @@ bool checkAccess() {
   // Verify authentication
   if (!isAuthenticated || clientIP != authenticatedIP) {
     server.send(200, "text/html", "<script>window.location.href='http://192.168.4.1/login';</script>");
-    Serial.println("Unauthorized access, redirecting to /login for client " + clientIP);
+    LOG_DEBUG("Unauthorized access, redirecting %s", clientIP.c_str());
     return false;
   }
 
@@ -671,7 +727,7 @@ bool checkAccess() {
 
   // Deny access if another user has control
   server.send(403, "application/json", "{\"status\":\"error\",\"message\":\"Access denied\"}");
-  Serial.println("Error: unauthorized access from " + clientIP);
+  LOG_ERROR("Unauthorized access from %s", clientIP.c_str());
   return false;
 }
 
@@ -682,7 +738,7 @@ void handleGetControl() {
   String clientIP = server.client().remoteIP().toString();
   if (!isAuthenticated || clientIP != authenticatedIP) {
     server.send(200, "text/html", "<script>window.location.href='http://192.168.4.1/login';</script>");
-    Serial.println("Unauthorized access to /get_control from " + clientIP);
+    LOG_DEBUG("Unauthorized /get_control from %s", clientIP.c_str());
     return;
   }
   if (activeUserIP == "") {
@@ -699,13 +755,13 @@ void handleGetControl() {
     servo5.attach(27, 500, 2500);
     servo6.attach(14, 500, 2500);
     
-    Serial.println("Servos attached for user " + activeUserIP);
+    LOG_INFO("Servos attached for %s", activeUserIP.c_str());
     
     server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Control granted\"}");
-    Serial.println("User " + activeUserIP + " gained control, total requests: " + String(requestCount));
+    LOG_INFO("User %s gained control", activeUserIP.c_str());
   } else {
     server.send(423, "application/json", "{\"status\":\"error\",\"message\":\"Control already taken\"}");
-    Serial.println("Error: control already taken, request from " + clientIP);
+    LOG_ERROR("Control already taken, request from %s", clientIP.c_str());
   }
 }
 
@@ -716,17 +772,17 @@ void handleReleaseControl() {
   String clientIP = server.client().remoteIP().toString();
   if (!isAuthenticated || clientIP != authenticatedIP) {
     server.send(200, "text/html", "<script>window.location.href='http://192.168.4.1/login';</script>");
-    Serial.println("Unauthorized access to /release_control from " + clientIP);
+    LOG_DEBUG("Unauthorized /release_control from %s", clientIP.c_str());
     return;
   }
   if (clientIP == activeUserIP) {
     returnToNeutral();
     toggleLights(false);
     server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Control released\"}");
-    Serial.println("Control released, total requests: " + String(requestCount));
+    LOG_INFO("Control released");
   } else {
     server.send(403, "application/json", "{\"status\":\"error\",\"message\":\"No permission to release control\"}");
-    Serial.println("Error: unauthorized control release from " + clientIP);
+    LOG_ERROR("Unauthorized control release from %s", clientIP.c_str());
   }
 }
 
@@ -779,8 +835,7 @@ void updateServos() {
     if (servo6.attached()) servo6.write(pos6);
     
     // Log current servo positions
-    Serial.printf("Servo positions: Front Ailerons (servo1, servo2)=%d,%d, Rear Ailerons (servo3, servo4)=%d,%d, Camera (servo5, servo6)=%d,%d, Flaps Mode=%s\n", 
-                  pos1, pos2, pos3, pos4, pos5, pos6, flapsMode ? "ON" : "OFF");
+    LOG_DEBUG("Servo: %d,%d,%d,%d,%d,%d flaps=%s", pos1, pos2, pos3, pos4, pos5, pos6, flapsMode ? "ON" : "OFF");
   }
 }
 
@@ -789,7 +844,7 @@ void updateServos() {
  */
 void resetSystem() {
   returnToNeutral();
-  Serial.println("System reset");
+  LOG_INFO("System reset");
 }
 
 /**
@@ -902,7 +957,7 @@ void handleRoot() {
       position: relative;
       background: radial-gradient(circle, #333, #1a1a1a);
       border-radius: 50%;
-      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px #削
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px #00ccff;
       border: 2px solid #444;
     }
     .joystick {
@@ -1198,6 +1253,8 @@ void handleRoot() {
     
     let hasControl = false; // Flag for control status
     let isDragging = false; // Flag for joystick dragging
+    let lastJoystickSend = 0; // Throttle timestamp for joystick HTTP requests
+    const JOYSTICK_THROTTLE_MS = 50; // Min interval between joystick requests (ms)
     const flightCenter = { x: 100, y: 100 }; // Joystick center position
     const flightMaxMove = 75; // Maximum joystick movement distance
 
@@ -1383,7 +1440,13 @@ void handleRoot() {
       x = distance * Math.cos(angle);
       y = distance * Math.sin(angle);
       
+      // Always update visual joystick position
       joystick.style.transform = `translate(${x}px, ${y}px)`;
+      
+      // Throttle HTTP requests to avoid flooding ESP32 (fix 5.1)
+      const now = Date.now();
+      if (now - lastJoystickSend < JOYSTICK_THROTTLE_MS) return;
+      lastJoystickSend = now;
       
       const normX = (x / flightMaxMove).toFixed(2);
       const normY = (y / flightMaxMove).toFixed(2);
